@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>🎬 Kinderfile – Dein Film-Studio</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎬</text></svg>">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <h1>🎬 Kinderfile</h1>
+  <p class="tagline">Knipse Fotos, bau deinen eigenen Film und zeig ihn allen!</p>
+</header>
+
+<main class="layout">
+
+  <section class="panel" id="panel-fotos">
+    <h2>1️⃣ Fotos</h2>
+    <div class="btnrow">
+      <button id="btnCamera" class="btn btn-pink big">📷 Foto aufnehmen</button>
+      <label for="fileUpload" class="btn btn-orange big">🖼️ Fotos hochladen</label>
+      <input type="file" id="fileUpload" accept="image/*" multiple hidden>
+    </div>
+    <div class="btnrow">
+      <button id="btnSave" class="btn btn-blue">💾 Projekt speichern</button>
+      <label for="fileLoad" class="btn btn-blue">📂 Projekt laden</label>
+      <input type="file" id="fileLoad" accept=".json,application/json" hidden>
+    </div>
+    <p id="sceneCount" class="hint"></p>
+  </section>
+
+  <section class="panel" id="panel-szenen">
+    <h2>2️⃣ Szenen</h2>
+    <p id="emptyHint" class="hint">Noch keine Szenen – knipse dein erstes Foto! 📸</p>
+    <div id="gallery" class="gallery"></div>
+  </section>
+
+  <section class="panel" id="panel-musik">
+    <h2>3️⃣ Musik &amp; Töne</h2>
+    <label class="field">🎵 Hintergrundmusik
+      <select id="selectMusic"></select>
+    </label>
+    <label class="field">🔊 Lautstärke
+      <input type="range" id="rangeVolume" min="0" max="100" value="80">
+    </label>
+    <p class="field-label">Fun-Geräusche zum Testen (komm in die Szenen!):</p>
+    <div id="sfxTest" class="sfxrow"></div>
+  </section>
+
+  <section class="panel" id="panel-kino">
+    <h2>4️⃣ Kino</h2>
+    <label class="field">🎞️ Filmtitel
+      <input id="inputTitle" type="text" maxlength="40" placeholder="z. B. Mein Superfilm">
+    </label>
+    <canvas id="stage" width="960" height="540"></canvas>
+    <div class="btnrow">
+      <button id="btnPlay" class="btn btn-green big">▶️ Vorschau</button>
+      <button id="btnExport" class="btn btn-purple big">⬇️ Film speichern (WebM)</button>
+      <button id="btnStop" class="btn btn-red big" disabled>⏹ Stopp</button>
+    </div>
+    <div class="progress" aria-hidden="true"><div id="progressFill"></div></div>
+    <p id="status" class="hint">Bereit!</p>
+  </section>
+
+</main>
+
+<div id="cameraModal" class="modal" hidden>
+  <div class="modal-box">
+    <h2>📷 Kamera</h2>
+    <video id="camVideo" autoplay playsinline muted></video>
+    <div class="btnrow">
+      <button id="btnSnap" class="btn btn-pink big">📸 Knipsen!</button>
+      <button id="btnCamClose" class="btn btn-red big">Fertig</button>
+    </div>
+    <p class="hint">Du kannst mehrmals knipsen – jedes Foto wird eine eigene Szene.</p>
+  </div>
+</div>
+
+<div id="toast" class="toast" hidden></div>
+<div id="snapFlash"></div>
+
+<footer class="foot">
+  Tipp: Am besten mit Chrome nutzen 🌟 Die Kamera braucht https oder localhost – Bilder bleiben immer nur in deinem Browser.
+</footer>
+
+<script src="js/audio.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
