@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.0.0';
+  var APP_VERSION = '1.1.0';
 
   var FRAME_W = 960;
   var FRAME_H = 540;
@@ -13,12 +13,15 @@
   var DUR_STEP = 500;
 
   var TRANSITIONS = {
-    blend: { label: '🌫️ Sanfte Überblendung', fade: 600 },
-    black: { label: '⬛ Schwarzblende', fade: 500 },
+    blend: { label: '🌫️ Sanfte Überblendung', fade: 200 },
+    black: { label: '⬛ Schwarzblende', fade: 200 },
     cut: { label: '✂️ Harter Schnitt', fade: 0 }
   };
 
-  var state = { title: '', music: 'stern', volume: 0.8, transition: 'blend', scenes: [] };
+  var DEFAULT_DUR = 1000;
+  var DUR_CHOICES = [500, 1000, 1500, 2000, 3000];
+
+  var state = { title: '', music: 'stern', volume: 0.8, transition: 'blend', defaultDur: DEFAULT_DUR, scenes: [] };
   var sceneSeq = 1;
 
   var els = {};
@@ -48,7 +51,7 @@
     'btnCamera', 'fileUpload', 'btnSave', 'fileLoad', 'cameraModal', 'camVideo',
     'btnSnap', 'btnCamClose', 'sceneCount', 'toast', 'snapFlash', 'selectTransition',
     'btnCamSwitch', 'camZoom', 'btnZoomIn', 'btnZoomOut', 'camZoomVal', 'camName',
-    'appVersion'];
+    'selectDefaultDur', 'appVersion'];
 
   function init() {
     ID_LIST.forEach(function (id) { els[id] = document.getElementById(id); });
@@ -85,6 +88,11 @@
     els.selectTransition.addEventListener('change', function () {
       state.transition = els.selectTransition.value;
     });
+    els.selectDefaultDur.addEventListener('change', function () {
+      var v = parseInt(els.selectDefaultDur.value, 10);
+      state.defaultDur = DUR_CHOICES.indexOf(v) >= 0 ? v : DEFAULT_DUR;
+      showToast('⏱️ Neue Fotos: ' + fmtDur(state.defaultDur) + ' pro Szene');
+    });
     els.btnPlay.addEventListener('click', startPreview);
     els.btnExport.addEventListener('click', startExport);
     els.btnStop.addEventListener('click', stopAll);
@@ -109,7 +117,7 @@
       bitmap: null,
       broken: false,
       ready: null,
-      duration: 2000,
+      duration: state.defaultDur,
       sound: 'kein',
       active: true
     };
@@ -485,6 +493,130 @@
     im.src = dataUrl;
   }
 
+  /* ---------- WebM reparieren (Dauer-Metadaten) ----------
+   * Chrome schreibt beim MediaRecorder-Export keine Dauer in die WebM.
+   * Manche Player (z. B. Galaxy-Video) zeigen dann 0:00 und spielen
+   * das Video nur einmal / nicht richtig ab. Hier patchen wir die Dauer
+   * direkt in die EBML-Struktur (Segment > Info > Duration). */
+
+  function ebmlReadId(dv, pos) {
+    var b0 = dv.getUint8(pos), len = 1, mask = 0x80;
+    while (!(b0 & mask) && len < 8) { mask >>= 1; len++; }
+    var id = 0;
+    for (var i = 0; i < len; i++) { id = id * 256 + dv.getUint8(pos + i); }
+    return { id: id, len: len };
+  }
+
+  function ebmlReadSize(dv, pos) {
+    var b0 = dv.getUint8(pos), len = 1, mask = 0x80;
+    while (!(b0 & mask) && len < 8) { mask >>= 1; len++; }
+    if (len > 8) { return null; }
+    var size = b0 & (mask - 1);
+    var unknown = size === mask - 1;
+    for (var i = 1; i < len; i++) {
+      var b = dv.getUint8(pos + i);
+      if (b !== 0xff) { unknown = false; }
+      size = size * 256 + b;
+    }
+    return { size: unknown ? -1 : size, len: len };
+  }
+
+  function writeVint(out, pos, len, value) {
+    var v = value;
+    for (var i = len - 1; i >= 0; i--) { out[pos + i] = v % 256; v = Math.floor(v / 256); }
+    out[pos] |= 0x80 >> (len - 1);
+  }
+
+  function patchWebmDuration(dv, durationMs) {
+    var pos = 0;
+    while (pos < dv.byteLength) {
+      var idR = ebmlReadId(dv, pos);
+      var szR = ebmlReadSize(dv, pos + idR.len);
+      if (!szR) { break; }
+      var body = pos + idR.len + szR.len;
+      if (idR.id === 0x18538067) { /* Segment */
+        return patchSegment(dv, body, durationMs, szR.size);
+      }
+      if (szR.size < 0) { break; }
+      pos = body + szR.size;
+    }
+    throw new Error('Kein Segment gefunden');
+  }
+
+  function patchSegment(dv, start, durationMs, segSize) {
+    var pos = start;
+    var end = segSize < 0 ? dv.byteLength : Math.min(start + segSize, dv.byteLength);
+    while (pos < end) {
+      var idR = ebmlReadId(dv, pos);
+      var szR = ebmlReadSize(dv, pos + idR.len);
+      if (!szR) { break; }
+      if (idR.id === 0x1549A966) { /* Info */
+        return patchInfo(dv, pos, idR.len, szR, durationMs);
+      }
+      if (szR.size < 0) { break; }
+      pos += idR.len + szR.len + szR.size;
+    }
+    throw new Error('Kein Info-Element gefunden');
+  }
+
+  function patchInfo(dv, infoPos, idLen, szR, durationMs) {
+    if (szR.size < 0) { throw new Error('Info mit unbekannter Größe'); }
+    var bodyStart = infoPos + idLen + szR.len;
+    var bodyLen = szR.size;
+    var pos = bodyStart, end = bodyStart + bodyLen, timescale = 1000000;
+    var insertAt = bodyStart; /* nach TimestampScale einfügen (EBML-Empfehlung) */
+    while (pos < end) {
+      var idR = ebmlReadId(dv, pos);
+      var s = ebmlReadSize(dv, pos + idR.len);
+      if (!s) { break; }
+      if (idR.id === 0x2AD7B1 && s.size === 4) { /* TimestampScale */
+        timescale = dv.getUint32(pos + idR.len + s.len);
+        insertAt = pos + idR.len + s.len + s.size;
+      } else if (idR.id === 0x4489) { /* Duration ist schon da */
+        return rewriteDuration(dv, pos + idR.len, s, durationMs * 1000000 / timescale);
+      }
+      pos += idR.len + s.len + s.size;
+    }
+    /* Duration fehlt -> Element (6 Bytes) in Info einfügen */
+    var durEl = new Uint8Array(7);
+    durEl[0] = 0x44; durEl[1] = 0x89; durEl[2] = 0x84;
+    new DataView(durEl.buffer).setFloat32(3, durationMs * 1000000 / timescale);
+    var out = new Uint8Array(dv.byteLength + durEl.length);
+    out.set(new Uint8Array(dv.buffer, dv.byteOffset, insertAt), 0);
+    out.set(durEl, insertAt);
+    out.set(new Uint8Array(dv.buffer, dv.byteOffset + insertAt, dv.byteLength - insertAt),
+      insertAt + durEl.length);
+    writeVint(out, infoPos + idLen, szR.len, bodyLen + durEl.length);
+    return out.buffer;
+  }
+
+  function rewriteDuration(dv, vpos, s, value) {
+    if (s.size !== 4 && s.size !== 8) { throw new Error('Komisches Duration-Format'); }
+    var out = new Uint8Array(dv.buffer.slice(0));
+    var dvo = new DataView(out.buffer);
+    if (s.size === 4) { dvo.setFloat32(vpos + s.len, value); }
+    else { dvo.setFloat64(vpos + s.len, value); }
+    return out.buffer;
+  }
+
+  function fixWebmDuration(blob, durationMs) {
+    return new Promise(function (resolve) {
+      if (!window.FileReader) { resolve(blob); return; }
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var patched = patchWebmDuration(new DataView(reader.result), durationMs);
+          resolve(new Blob([patched], { type: 'video/webm' }));
+        } catch (e) {
+          console.log('[Kinderfilm] Dauer-Patch übersprungen:', e.message);
+          resolve(blob);
+        }
+      };
+      reader.onerror = function () { resolve(blob); };
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+
   /* ---------- Projekt speichern / laden ---------- */
 
   function downloadBlob(blob, name) {
@@ -508,6 +640,7 @@
       music: state.music,
       volume: state.volume,
       transition: state.transition,
+      defaultDur: state.defaultDur,
       scenes: state.scenes.map(function (s) {
         return { img: s.img, duration: s.duration, sound: s.sound, active: s.active };
       })
@@ -542,11 +675,13 @@
       els.selectTransition.value = state.transition;
       state.volume = typeof data.volume === 'number' ? Math.min(1, Math.max(0, data.volume)) : 0.8;
       els.rangeVolume.value = Math.round(state.volume * 100);
+      state.defaultDur = DUR_CHOICES.indexOf(Number(data.defaultDur)) >= 0 ? Number(data.defaultDur) : DEFAULT_DUR;
+      els.selectDefaultDur.value = String(state.defaultDur);
       state.scenes = data.scenes
         .filter(function (s) { return s && typeof s.img === 'string' && s.img.indexOf('data:image') === 0; })
         .map(function (s) {
           var scene = makeScene(s.img);
-          scene.duration = Math.min(MAX_DUR, Math.max(MIN_DUR, Number(s.duration) || 2000));
+          scene.duration = Math.min(MAX_DUR, Math.max(MIN_DUR, Number(s.duration) || state.defaultDur));
           scene.sound = s.sound && window.AudioEngine.SFX_LABELS[s.sound] ? s.sound : 'kein';
           scene.active = s.active !== false;
           return scene;
@@ -809,11 +944,15 @@
           };
           play.recorder.onstop = function () {
             var wasDiscard = play.discard;
+            var totalMs = play.total;
+            var raw = new Blob(play.chunks, { type: 'video/webm' });
             stopPlaybackUI();
             if (!wasDiscard) {
-              downloadBlob(new Blob(play.chunks, { type: 'video/webm' }), 'kinderfilm.webm');
-              showToast('🎉 Dein Film ist gespeichert!');
-              setStatus('Film als kinderfilm.webm gespeichert! ⭐');
+              fixWebmDuration(raw, totalMs).then(function (fixed) {
+                downloadBlob(fixed, 'kinderfilm.webm');
+                showToast('🎉 Dein Film ist gespeichert!');
+                setStatus('Film als kinderfilm.webm gespeichert! ⭐');
+              });
             } else {
               setStatus('Export abgebrochen.');
             }
@@ -835,19 +974,26 @@
 
   function tick() {
     if (!play.mode) { return; }
-    var t = (play.ac.currentTime - play.startAt) * 1000;
-    if (t >= play.total) {
-      renderFrame(play.total);
-      if (play.mode === 'export' && play.recorder) {
-        play.recorder.stop();
-        play.recorder = null;
+    try {
+      var t = (play.ac.currentTime - play.startAt) * 1000;
+      if (t >= play.total) {
+        renderFrame(play.total);
+        if (play.mode === 'export' && play.recorder) {
+          play.recorder.stop();
+          play.recorder = null;
+        }
+        stopPlaybackUI();
+        return;
       }
-      stopPlaybackUI();
-      return;
+      renderFrame(t);
+      updateProgress(t / play.total);
+      play.raf = requestAnimationFrame(tick);
+    } catch (e) {
+      /* Nie hängen bleiben: bei einem Render-Fehler sauber stoppen,
+         damit Vorschau/Export wieder gestartet werden können. */
+      console.log('[Kinderfilm] Playback-Fehler:', e.message);
+      try { stopPlaybackUI(); } catch (e2) { /* egal */ }
     }
-    renderFrame(t);
-    updateProgress(t / play.total);
-    play.raf = requestAnimationFrame(tick);
   }
 
   function stopPlaybackUI() {

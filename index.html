@@ -33,6 +33,15 @@
 
   <section class="panel" id="panel-szenen">
     <h2>2️⃣ Szenen</h2>
+    <label class="field">⏱️ Zeit pro Szene (für neue Fotos)
+      <select id="selectDefaultDur">
+        <option value="500">0,5 Sekunden</option>
+        <option value="1000" selected>1 Sekunde</option>
+        <option value="1500">1,5 Sekunden</option>
+        <option value="2000">2 Sekunden</option>
+        <option value="3000">3 Sekunden</option>
+      </select>
+    </label>
     <p id="emptyHint" class="hint">Noch keine Szenen – knipse dein erstes Foto! 📸</p>
     <div id="gallery" class="gallery"></div>
   </section>
