@@ -74,10 +74,19 @@
     <h2>📷 Kamera</h2>
     <video id="camVideo" playsinline muted></video>
     <div class="btnrow">
+      <button type="button" id="btnCamSwitch" class="btn btn-blue big">🔄 Kamera wechseln</button>
+    </div>
+    <div class="scene-row zoomrow">
+      <button type="button" id="btnZoomOut" class="btn btn-mini">➖</button>
+      <input type="range" id="camZoom" min="100" max="300" step="10" value="100" aria-label="Kamera-Zoom">
+      <button type="button" id="btnZoomIn" class="btn btn-mini">➕</button>
+      <span id="camZoomVal" class="dur">100 %</span>
+    </div>
+    <div class="btnrow">
       <button type="button" id="btnSnap" class="btn btn-pink big">📸 Knipsen!</button>
       <button type="button" id="btnCamClose" class="btn btn-red big">Fertig</button>
     </div>
-    <p class="hint">Du kannst mehrmals knipsen – jedes Foto wird eine eigene Szene.</p>
+    <p class="hint">Du kannst mehrmals knipsen – jedes Foto wird eine eigene Szene. Zoom gilt auch fürs Foto.</p>
   </div>
 </div>
 
