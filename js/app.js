@@ -1,4 +1,4 @@
-/* Kinderfile – Logik der Kinderfilm-Web-App */
+/* Kinderfilm – Logik der Web-App */
 (function () {
   'use strict';
 
@@ -332,7 +332,7 @@
   function saveProject() {
     if (!state.scenes.length) { showToast('Erst ein Foto aufnehmen! 📸'); return; }
     var data = {
-      app: 'kinderfile',
+      app: 'kinderfilm',
       version: 1,
       title: state.title,
       music: state.music,
@@ -359,7 +359,7 @@
         showToast('Das ist keine Projekt-Datei. 😕');
         return;
       }
-      if (!data || data.app !== 'kinderfile' || !Array.isArray(data.scenes) || !data.scenes.length) {
+      if (!data || data.app !== 'kinderfilm' && data.app !== 'kinderfile' || !Array.isArray(data.scenes) || !data.scenes.length) {
         showToast('Das Projekt sieht kaputt aus. 😕');
         return;
       }

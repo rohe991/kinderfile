@@ -1,4 +1,4 @@
-/* Kinderfile Audio-Engine: alle Melodien und Geräusche werden direkt im
+/* Kinderfilm Audio-Engine: alle Melodien und Geräusche werden direkt im
    Browser mit der Web Audio API erzeugt – ganz ohne Audiodateien. */
 (function () {
   'use strict';
@@ -134,15 +134,15 @@
   }
 
   function playNoise(ac, out, opt) {
-    if (!ac.__kinderfileNoise) {
+    if (!ac.__kinderfilmNoise) {
       var len = ac.sampleRate * 2;
       var buf = ac.createBuffer(1, len, ac.sampleRate);
       var data = buf.getChannelData(0);
       for (var i = 0; i < len; i++) { data[i] = Math.random() * 2 - 1; }
-      ac.__kinderfileNoise = buf;
+      ac.__kinderfilmNoise = buf;
     }
     var src = ac.createBufferSource();
-    src.buffer = ac.__kinderfileNoise;
+    src.buffer = ac.__kinderfilmNoise;
     src.loop = true;
     var filter = ac.createBiquadFilter();
     filter.type = opt.filter || 'lowpass';
@@ -243,13 +243,13 @@
     SFX_LABELS: SFX_LABELS,
     melodyLengthSec: melodyLengthSec,
     ensure: function () {
-      if (!window.__kinderfileAC) {
-        window.__kinderfileAC = new (window.AudioContext || window.webkitAudioContext)();
+      if (!window.__kinderfilmAC) {
+        window.__kinderfilmAC = new (window.AudioContext || window.webkitAudioContext)();
       }
-      if (window.__kinderfileAC.state === 'suspended') {
-        window.__kinderfileAC.resume();
+      if (window.__kinderfilmAC.state === 'suspended') {
+        window.__kinderfilmAC.resume();
       }
-      return window.__kinderfileAC;
+      return window.__kinderfilmAC;
     },
     playMelody: playMelody,
     melodyLengthSec: melodyLengthSec,
