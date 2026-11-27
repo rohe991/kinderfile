@@ -1,4 +1,4 @@
-# 🎬 kinderfile – Kinderfilm-App
+# 🎬 kinderfilm – Film-Studio für Kinder
 
 Eine Web-App für Kinder: Fotos aufnehmen, daraus einen kleinen Film bauen,
 mit Musik und Tönen untermalen, anschauen und als WebM-Video speichern.
@@ -49,4 +49,4 @@ Die App speichert nichts auf einem Server.
 ## Empfohlene Veröffentlichung
 
 Über GitHub Pages aktivieren (Settings → Pages → Branch `main`), dann ist die App
-unter `https://<benutzer>.github.io/kinderfile/` erreichbar.
+unter `https://<benutzer>.github.io/kinderfilm/` erreichbar.
