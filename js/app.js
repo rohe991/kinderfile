@@ -5,13 +5,19 @@
   var FRAME_W = 960;
   var FRAME_H = 540;
   var TITLE_MS = 2200;
-  var FADE_MS = 400;
-  var ZOOM_MAX = 0.08;
+  var TITLE_FADE_MS = 400;
+  var ZOOM_MAX = 0.1;
   var MIN_DUR = 500;
   var MAX_DUR = 6000;
   var DUR_STEP = 500;
 
-  var state = { title: '', music: 'stern', volume: 0.8, scenes: [] };
+  var TRANSITIONS = {
+    blend: { label: '🌫️ Sanfte Überblendung', fade: 600 },
+    black: { label: '⬛ Schwarzblende', fade: 500 },
+    cut: { label: '✂️ Harter Schnitt', fade: 0 }
+  };
+
+  var state = { title: '', music: 'stern', volume: 0.8, transition: 'blend', scenes: [] };
   var sceneSeq = 1;
 
   var els = {};
@@ -34,11 +40,12 @@
   var ID_LIST = ['stage', 'btnPlay', 'btnStop', 'btnExport', 'progressFill', 'status',
     'gallery', 'emptyHint', 'inputTitle', 'selectMusic', 'rangeVolume', 'sfxTest',
     'btnCamera', 'fileUpload', 'btnSave', 'fileLoad', 'cameraModal', 'camVideo',
-    'btnSnap', 'btnCamClose', 'sceneCount', 'toast', 'snapFlash'];
+    'btnSnap', 'btnCamClose', 'sceneCount', 'toast', 'snapFlash', 'selectTransition'];
 
   function init() {
     ID_LIST.forEach(function (id) { els[id] = document.getElementById(id); });
     els.stageCtx = els.stage.getContext('2d');
+    if ('imageSmoothingQuality' in els.stageCtx) { els.stageCtx.imageSmoothingQuality = 'high'; }
 
     for (var i = 0; i < 26; i++) {
       titleStars.push({ x: Math.random() * FRAME_W, y: Math.random() * FRAME_H, r: 1 + Math.random() * 2.4 });
@@ -46,6 +53,11 @@
 
     buildMusicSelect();
     buildSfxTest();
+    Object.keys(TRANSITIONS).forEach(function (id) {
+      els.selectTransition.appendChild(
+        new Option(TRANSITIONS[id].label, id, false, state.transition === id)
+      );
+    });
 
     els.btnCamera.addEventListener('click', openCamera);
     els.btnSnap.addEventListener('click', snapPhoto);
@@ -56,6 +68,9 @@
     els.inputTitle.addEventListener('input', function () { state.title = els.inputTitle.value; });
     els.selectMusic.addEventListener('change', onMusicChange);
     els.rangeVolume.addEventListener('input', onVolumeChange);
+    els.selectTransition.addEventListener('change', function () {
+      state.transition = els.selectTransition.value;
+    });
     els.btnPlay.addEventListener('click', startPreview);
     els.btnExport.addEventListener('click', startExport);
     els.btnStop.addEventListener('click', stopAll);
@@ -238,6 +253,8 @@
       camStream = stream;
       els.camVideo.srcObject = stream;
       els.cameraModal.hidden = false;
+      var p = els.camVideo.play();
+      if (p && p.catch) { p.catch(function () { /* startet beim ersten Klick */ }); }
     }).catch(function () {
       showToast('Kein Kamerazugriff. Bitte erlauben! 🙏');
     });
@@ -321,6 +338,7 @@
       title: state.title,
       music: state.music,
       volume: state.volume,
+      transition: state.transition,
       scenes: state.scenes.map(function (s) {
         return { img: s.img, duration: s.duration, sound: s.sound, active: s.active };
       })
@@ -351,6 +369,8 @@
       els.inputTitle.value = state.title;
       state.music = window.AudioEngine.MELODIES[data.music] ? data.music : 'stern';
       els.selectMusic.value = state.music;
+      state.transition = TRANSITIONS[data.transition] ? data.transition : 'blend';
+      els.selectTransition.value = state.transition;
       state.volume = typeof data.volume === 'number' ? Math.min(1, Math.max(0, data.volume)) : 0.8;
       els.rangeVolume.value = Math.round(state.volume * 100);
       state.scenes = data.scenes
@@ -430,13 +450,24 @@
     ctx.drawImage(img, (FRAME_W - w) / 2, (FRAME_H - h) / 2, w, h);
   }
 
+  /* Sanfte Beschleunigung: startet und endet ruhig – wirkt weniger ruckelig. */
+  function easeInOut(p) {
+    return 0.5 - 0.5 * Math.cos(Math.PI * p);
+  }
+
+  function fadeMs() {
+    var t = TRANSITIONS[state.transition] || TRANSITIONS.blend;
+    return t.fade;
+  }
+
   function drawSceneImg(ctx, scene, localMs, durMs) {
     if (scene.broken || !scene.bitmap || !scene.bitmap.complete) {
       ctx.fillStyle = '#333';
       ctx.fillRect(0, 0, FRAME_W, FRAME_H);
       return;
     }
-    var zoom = 1 + ZOOM_MAX * (localMs / Math.max(1, durMs));
+    var p = Math.min(1, localMs / Math.max(1, durMs));
+    var zoom = 1 + ZOOM_MAX * easeInOut(p);
     drawCover(ctx, scene.bitmap, zoom);
   }
 
@@ -446,8 +477,8 @@
     var a;
     if (localMs < fadeIn) {
       a = localMs / fadeIn;
-    } else if (localMs > TITLE_MS - FADE_MS) {
-      a = Math.max(0, (TITLE_MS - localMs) / FADE_MS);
+    } else if (localMs > TITLE_MS - TITLE_FADE_MS) {
+      a = Math.max(0, (TITLE_MS - localMs) / TITLE_FADE_MS);
     } else {
       a = 1;
     }
@@ -493,11 +524,20 @@
     if (i >= tl.segs.length || sceneT < tl.segs[i].start) { return; }
     var seg = tl.segs[i];
     var local = sceneT - seg.start;
+    var fade = fadeMs();
     var prev = i > 0 ? tl.segs[i - 1] : null;
-    if (prev && local < FADE_MS && prev.scene.bitmap && prev.scene.bitmap.complete) {
+    if (state.transition === 'blend' && prev && local < fade &&
+        prev.scene.bitmap && prev.scene.bitmap.complete) {
+      /* Vorheriges Bild in seinem Endzoom halten, neues Bild weich darueberblenden */
       drawSceneImg(ctx, prev.scene, prev.end - prev.start, prev.scene.duration);
-      ctx.globalAlpha = local / FADE_MS;
+      ctx.globalAlpha = easeInOut(local / fade);
       drawSceneImg(ctx, seg.scene, local, seg.scene.duration);
+      ctx.globalAlpha = 1;
+    } else if (state.transition === 'black' && local < fade) {
+      drawSceneImg(ctx, seg.scene, local, seg.scene.duration);
+      ctx.fillStyle = '#000';
+      ctx.globalAlpha = 1 - easeInOut(local / fade);
+      ctx.fillRect(0, 0, FRAME_W, FRAME_H);
       ctx.globalAlpha = 1;
     } else {
       drawSceneImg(ctx, seg.scene, local, seg.scene.duration);
