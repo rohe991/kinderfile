@@ -253,10 +253,19 @@ body {
 
 .modal-box h2 { margin: 0 0 12px; }
 
-#camVideo {
+/* Kamera-Rahmen: Zoom cropt IM Bild statt über das Modal hinauszuwachsen */
+.camview {
   width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
   border-radius: 16px;
   background: #000;
+}
+
+.camview video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .zoomrow {

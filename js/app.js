@@ -33,9 +33,11 @@
     discard: false
   };
   var camStream = null;
+  var camTrack = null;
   var camFacing = 'user';
   var camZoom = 1;
   var camSwitching = false;
+  var camNativeZoom = null; /* {min,max,step} wenn die Kamera nativen Zoom kann */
   var toastTimer = null;
   var titleStars = [];
 
@@ -43,7 +45,7 @@
     'gallery', 'emptyHint', 'inputTitle', 'selectMusic', 'rangeVolume', 'sfxTest',
     'btnCamera', 'fileUpload', 'btnSave', 'fileLoad', 'cameraModal', 'camVideo',
     'btnSnap', 'btnCamClose', 'sceneCount', 'toast', 'snapFlash', 'selectTransition',
-    'btnCamSwitch', 'camZoom', 'btnZoomIn', 'btnZoomOut', 'camZoomVal'];
+    'btnCamSwitch', 'camZoom', 'btnZoomIn', 'btnZoomOut', 'camZoomVal', 'camName'];
 
   function init() {
     ID_LIST.forEach(function (id) { els[id] = document.getElementById(id); });
@@ -254,6 +256,7 @@
     if (camStream) {
       camStream.getTracks().forEach(function (t) { t.stop(); });
       camStream = null;
+      camTrack = null;
     }
     els.camVideo.srcObject = null;
   }
@@ -261,33 +264,64 @@
   function startCamera(facing, showOnSuccess) {
     if (camSwitching) { return; }
     camSwitching = true;
-    stopCamTracks();
-    navigator.mediaDevices.getUserMedia({
+    /* Wichtig: alte Kamera erst NACH erfolgreichem Start stoppen,
+       damit ein fehlgeschlagener Wechsel das Livebild nicht zerstört. */
+    var constraints = {
       video: {
         width: { ideal: 1280 },
         height: { ideal: 720 },
-        facingMode: { ideal: facing }
+        facingMode: facing === 'environment' ? { exact: 'environment' } : { ideal: 'user' }
       },
       audio: false
-    }).then(function (stream) {
+    };
+    navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+      stopCamTracks();
       camStream = stream;
+      camTrack = stream.getVideoTracks()[0] || null;
       camFacing = facing;
       els.camVideo.srcObject = stream;
       if (showOnSuccess) { els.cameraModal.hidden = false; }
+      detectNativeZoom();
       setCamZoom(1);
+      updateCamName();
       var p = els.camVideo.play();
       if (p && p.catch) { p.catch(function () { /* startet beim ersten Klick */ }); }
       camSwitching = false;
-    }).catch(function () {
+    }).catch(function (err) {
       camSwitching = false;
-      if (facing !== 'user') {
-        camFacing = 'user';
-        showToast('Rückkamera nicht verfügbar – zurück zur Frontkamera. 🤳');
-        startCamera('user', showOnSuccess);
+      if (facing === 'environment') {
+        showToast('🤷 Nur eine Kamera gefunden – Wechsel nicht möglich.');
       } else if (showOnSuccess) {
-        showToast('Kein Kamerazugriff. Bitte erlauben! 🙏');
+        if (err && err.name === 'NotAllowedError') {
+          showToast('Kamera wurde blockiert – bitte in den Browser-Einstellungen erlauben. 🙏');
+        } else if (err && err.name === 'NotFoundError') {
+          showToast('Keine Kamera gefunden. 📷');
+        } else {
+          showToast('Kein Kamerazugriff. Bitte erlauben! 🙏');
+        }
       }
     });
+  }
+
+  function detectNativeZoom() {
+    camNativeZoom = null;
+    try {
+      var caps = camTrack && camTrack.getCapabilities ? camTrack.getCapabilities() : null;
+      if (caps && caps.zoom && caps.zoom.max > caps.zoom.min) {
+        camNativeZoom = {
+          min: caps.zoom.min,
+          max: Math.min(caps.zoom.max, 3),
+          step: caps.zoom.step || 0.1
+        };
+      }
+    } catch (e) { camNativeZoom = null; }
+  }
+
+  function updateCamName() {
+    var native = camNativeZoom ? ' (optischer Zoom)' : '';
+    els.camName.textContent = camFacing === 'user'
+      ? '🤳 Selfie-Kamera' + native
+      : '📷 Rückkamera' + native;
   }
 
   function openCamera() {
@@ -307,9 +341,20 @@
     camZoom = Math.min(3, Math.max(1, z));
     els.camZoom.value = String(Math.round(camZoom * 100));
     els.camZoomVal.textContent = Math.round(camZoom * 100) + ' %';
-    var mirror = camFacing === 'user' ? 'scaleX(-1) ' : '';
-    els.camVideo.style.transformOrigin = 'center';
-    els.camVideo.style.transform = mirror + 'scale(' + camZoom + ')';
+    var mirror = camFacing === 'user' ? 'scaleX(-1)' : '';
+    if (camNativeZoom && camTrack) {
+      /* Echter Sensor-Zoom: scharf, wird automatisch vom Livebild übernommen */
+      var native = camNativeZoom.min +
+        ((camZoom - 1) / 2) * (camNativeZoom.max - camNativeZoom.min);
+      native = Math.min(camNativeZoom.max,
+        Math.max(camNativeZoom.min, Math.round(native / camNativeZoom.step) * camNativeZoom.step));
+      camTrack.applyConstraints({ advanced: [{ zoom: native }] }).catch(function () { /* fällt aufs Croppen zurück */ });
+      els.camVideo.style.transform = mirror;
+    } else {
+      /* Digitaler Zoom: Bildausschnitt wird vergrößert und im Rahmen ge-cropped */
+      els.camVideo.style.transformOrigin = 'center';
+      els.camVideo.style.transform = (mirror ? mirror + ' ' : '') + 'scale(' + camZoom + ')';
+    }
   }
 
   function closeCamera() {
@@ -325,10 +370,14 @@
     }
     var vw = v.videoWidth;
     var vh = v.videoHeight;
-    var sw = vw / camZoom;
-    var sh = vh / camZoom;
-    var sx = (vw - sw) / 2;
-    var sy = (vh - sh) / 2;
+    var sx = 0, sy = 0, sw = vw, sh = vh;
+    if (!camNativeZoom && camZoom > 1) {
+      /* Zoom-Ausschnitt aus dem vollen Bild herausschneiden */
+      sw = vw / camZoom;
+      sh = vh / camZoom;
+      sx = (vw - sw) / 2;
+      sy = (vh - sh) / 2;
+    }
     var scale = Math.min(1, 1280 / sw);
     var c = document.createElement('canvas');
     c.width = Math.round(sw * scale);
