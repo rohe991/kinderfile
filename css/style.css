@@ -314,6 +314,13 @@ body {
   text-shadow: 0 2px 0 rgba(34, 34, 74, 0.25);
 }
 
+.foot .ver {
+  margin: 0 0 6px;
+  font-size: 0.85rem;
+  opacity: 0.9;
+  font-weight: 700;
+}
+
 /* ---------- Kompakter Modus für kleine Bildschirme (Handys) ---------- */
 
 @media (max-width: 640px) {
