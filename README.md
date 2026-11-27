@@ -13,7 +13,8 @@ Alles läuft direkt im Browser – ohne Anmeldung, ohne Server, ohne Installatio
   - tauschen (nach vorn oder hinten schieben)
   - Dauer pro Szene einstellen (0,5–6 Sekunden)
 - 🎵 **Musik & Töne** – Melodien und Geräusche werden live mit der Web Audio API erzeugt
-  - Hintergrundmusik wählen (Funkelstern, Hänschen klein, Sonnentanz, Mondwiese)
+  - Hintergrundmusik wählen: 🌞 Sonnentanz, ✨ Funkelstern, 🚶 Hänschen klein, 🌙 Mondwiese,
+    🚀 Sternenflotte (Raumopern-Fanfare), 🦈 Spannung, 🗺️ Abenteuer, 👻 Geistervilla
   - pro Szene einen Ton anhängen (Pling, Plop, Ente, Hund, Boing, Donner, Trommel, Fanfare)
   - Lautstärke regeln, Töne vorab antesten
 - 🍿 **Vorschau** – Film im Kino-Bereich abspielen (Titelkarte, sanfte Überblendungen, leichter Zoomeffekt)

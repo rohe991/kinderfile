@@ -52,6 +52,56 @@
         ['A4', 1], ['G4', 1], ['E4', 2],
         ['F4', 1], ['E4', 1], ['D4', 1], ['C4', 3]
       ]
+    },
+    sternenkrieg: {
+      label: '🚀 Sternenflotte',
+      tempo: 126,
+      wave: 'sawtooth',
+      vol: 0.15,
+      bass: true,
+      notes: [
+        ['C5', 1.5], ['G4', 0.5], ['C5', 1], ['E5', 2], ['D5', 1], ['C5', 1], ['D5', 1], ['B4', 1],
+        ['G4', 1], ['A4', 1], ['B4', 1], ['C5', 2], ['G4', 1], ['E4', 1], ['C4', 2],
+        ['C5', 1.5], ['G4', 0.5], ['C5', 1], ['E5', 2], ['F5', 1], ['E5', 1], ['D5', 1], ['B4', 1],
+        ['G4', 1], ['A4', 1], ['B4', 1], ['C5', 3]
+      ]
+    },
+    spannung: {
+      label: '🦈 Spannung',
+      tempo: 100,
+      wave: 'sine',
+      vol: 0.3,
+      bass: true,
+      notes: [
+        ['E3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5],
+        ['E3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5], ['G3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5],
+        ['E3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5], ['E3', 0.5], ['F3', 0.5],
+        ['G3', 0.5], ['G#3', 0.5], ['A3', 0.5], ['G#3', 0.5], ['G3', 0.5], ['F#3', 0.5], ['F3', 1]
+      ]
+    },
+    abenteuer: {
+      label: '🗺️ Abenteuer',
+      tempo: 140,
+      wave: 'triangle',
+      vol: 0.22,
+      bass: true,
+      notes: [
+        ['C4', 1], ['E4', 1], ['G4', 0.5], ['A4', 0.5], ['G4', 1], ['E4', 1],
+        ['F4', 1], ['G4', 1], ['E4', 0.5], ['C4', 0.5], ['D4', 2],
+        ['E4', 1], ['G4', 1], ['A4', 0.5], ['B4', 0.5], ['C5', 1], ['G4', 1],
+        ['A4', 1], ['G4', 1], ['E4', 0.5], ['D4', 0.5], ['C4', 2]
+      ]
+    },
+    geistervilla: {
+      label: '👻 Geistervilla',
+      tempo: 92,
+      wave: 'triangle',
+      vol: 0.2,
+      bass: true,
+      notes: [
+        ['A4', 1], ['C5', 1], ['B4', 1], ['A4', 1], ['E5', 2], ['D5', 1], ['C5', 1],
+        ['B4', 1], ['A4', 1], ['G4', 1], ['A4', 2], ['E4', 1], ['A4', 3]
+      ]
     }
   };
 
@@ -159,6 +209,8 @@
     var m = MELODIES[id];
     if (!m) { return; }
     var spb = 60 / m.tempo;
+    var wave = m.wave || 'triangle';
+    var level = vol * (m.vol || 0.22);
     var t = t0;
     for (var i = 0; i < m.notes.length; i++) {
       var note = m.notes[i];
@@ -167,10 +219,20 @@
         freq: noteFreq(note[0]),
         t: t,
         dur: dur * 0.9,
-        vol: vol * 0.22,
-        type: 'triangle',
+        vol: level,
+        type: wave,
         attack: 0.015
       });
+      if (m.bass) {
+        playTone(ac, out, {
+          freq: noteFreq(note[0]) / 2,
+          t: t,
+          dur: dur * 0.9,
+          vol: level * 0.6,
+          type: 'sine',
+          attack: 0.02
+        });
+      }
       t += dur;
     }
     return t - t0;
