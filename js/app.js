@@ -6,7 +6,6 @@
   var FRAME_H = 540;
   var TITLE_MS = 2200;
   var TITLE_FADE_MS = 400;
-  var ZOOM_MAX = 0.1;
   var MIN_DUR = 500;
   var MAX_DUR = 6000;
   var DUR_STEP = 500;
@@ -443,16 +442,12 @@
     }));
   }
 
-  function drawCover(ctx, img, zoom) {
-    var scale = Math.max(FRAME_W / img.naturalWidth, FRAME_H / img.naturalHeight) * zoom;
+  /* Bild passt sich vollständig ins Format ein (Cover), ohne Zoom/Bewegung. */
+  function drawCover(ctx, img) {
+    var scale = Math.max(FRAME_W / img.naturalWidth, FRAME_H / img.naturalHeight);
     var w = img.naturalWidth * scale;
     var h = img.naturalHeight * scale;
     ctx.drawImage(img, (FRAME_W - w) / 2, (FRAME_H - h) / 2, w, h);
-  }
-
-  /* Sanfte Beschleunigung: startet und endet ruhig – wirkt weniger ruckelig. */
-  function easeInOut(p) {
-    return 0.5 - 0.5 * Math.cos(Math.PI * p);
   }
 
   function fadeMs() {
@@ -460,15 +455,13 @@
     return t.fade;
   }
 
-  function drawSceneImg(ctx, scene, localMs, durMs) {
+  function drawSceneImg(ctx, scene) {
     if (scene.broken || !scene.bitmap || !scene.bitmap.complete) {
       ctx.fillStyle = '#333';
       ctx.fillRect(0, 0, FRAME_W, FRAME_H);
       return;
     }
-    var p = Math.min(1, localMs / Math.max(1, durMs));
-    var zoom = 1 + ZOOM_MAX * easeInOut(p);
-    drawCover(ctx, scene.bitmap, zoom);
+    drawCover(ctx, scene.bitmap);
   }
 
   function drawTitleCard(localMs) {
@@ -528,19 +521,19 @@
     var prev = i > 0 ? tl.segs[i - 1] : null;
     if (state.transition === 'blend' && prev && local < fade &&
         prev.scene.bitmap && prev.scene.bitmap.complete) {
-      /* Vorheriges Bild in seinem Endzoom halten, neues Bild weich darueberblenden */
-      drawSceneImg(ctx, prev.scene, prev.end - prev.start, prev.scene.duration);
-      ctx.globalAlpha = easeInOut(local / fade);
-      drawSceneImg(ctx, seg.scene, local, seg.scene.duration);
+      /* Direkte Überblendung: altes Bild bleibt stehen, neues wird weich darüber geblendet */
+      drawSceneImg(ctx, prev.scene);
+      ctx.globalAlpha = local / fade;
+      drawSceneImg(ctx, seg.scene);
       ctx.globalAlpha = 1;
     } else if (state.transition === 'black' && local < fade) {
-      drawSceneImg(ctx, seg.scene, local, seg.scene.duration);
+      drawSceneImg(ctx, seg.scene);
       ctx.fillStyle = '#000';
-      ctx.globalAlpha = 1 - easeInOut(local / fade);
+      ctx.globalAlpha = 1 - local / fade;
       ctx.fillRect(0, 0, FRAME_W, FRAME_H);
       ctx.globalAlpha = 1;
     } else {
-      drawSceneImg(ctx, seg.scene, local, seg.scene.duration);
+      drawSceneImg(ctx, seg.scene);
     }
   }
 
