@@ -254,7 +254,10 @@
 
   function snapPhoto() {
     var v = els.camVideo;
-    if (!v.videoWidth) { return; }
+    if (!v.videoWidth) {
+      showToast('Die Kamera ist noch nicht bereit – gib ihr einen Moment. 📷');
+      return;
+    }
     var scale = Math.min(1, 1280 / v.videoWidth);
     var c = document.createElement('canvas');
     c.width = Math.round(v.videoWidth * scale);
