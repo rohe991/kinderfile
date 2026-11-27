@@ -33,13 +33,17 @@
     discard: false
   };
   var camStream = null;
+  var camFacing = 'user';
+  var camZoom = 1;
+  var camSwitching = false;
   var toastTimer = null;
   var titleStars = [];
 
   var ID_LIST = ['stage', 'btnPlay', 'btnStop', 'btnExport', 'progressFill', 'status',
     'gallery', 'emptyHint', 'inputTitle', 'selectMusic', 'rangeVolume', 'sfxTest',
     'btnCamera', 'fileUpload', 'btnSave', 'fileLoad', 'cameraModal', 'camVideo',
-    'btnSnap', 'btnCamClose', 'sceneCount', 'toast', 'snapFlash', 'selectTransition'];
+    'btnSnap', 'btnCamClose', 'sceneCount', 'toast', 'snapFlash', 'selectTransition',
+    'btnCamSwitch', 'camZoom', 'btnZoomIn', 'btnZoomOut', 'camZoomVal'];
 
   function init() {
     ID_LIST.forEach(function (id) { els[id] = document.getElementById(id); });
@@ -61,6 +65,12 @@
     els.btnCamera.addEventListener('click', openCamera);
     els.btnSnap.addEventListener('click', snapPhoto);
     els.btnCamClose.addEventListener('click', closeCamera);
+    els.btnCamSwitch.addEventListener('click', switchCamera);
+    els.camZoom.addEventListener('input', function () {
+      setCamZoom(parseInt(els.camZoom.value, 10) / 100);
+    });
+    els.btnZoomIn.addEventListener('click', function () { setCamZoom(camZoom + 0.1); });
+    els.btnZoomOut.addEventListener('click', function () { setCamZoom(camZoom - 0.1); });
     els.fileUpload.addEventListener('change', onFilesSelected);
     els.fileLoad.addEventListener('change', onProjectLoad);
     els.btnSave.addEventListener('click', saveProject);
@@ -240,31 +250,70 @@
 
   /* ---------- Fotos ---------- */
 
-  function openCamera() {
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      showToast('Dein Browser unterstützt die Kamera leider nicht. 🙈');
-      return;
-    }
-    navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-      audio: false
-    }).then(function (stream) {
-      camStream = stream;
-      els.camVideo.srcObject = stream;
-      els.cameraModal.hidden = false;
-      var p = els.camVideo.play();
-      if (p && p.catch) { p.catch(function () { /* startet beim ersten Klick */ }); }
-    }).catch(function () {
-      showToast('Kein Kamerazugriff. Bitte erlauben! 🙏');
-    });
-  }
-
-  function closeCamera() {
+  function stopCamTracks() {
     if (camStream) {
       camStream.getTracks().forEach(function (t) { t.stop(); });
       camStream = null;
     }
     els.camVideo.srcObject = null;
+  }
+
+  function startCamera(facing, showOnSuccess) {
+    if (camSwitching) { return; }
+    camSwitching = true;
+    stopCamTracks();
+    navigator.mediaDevices.getUserMedia({
+      video: {
+        width: { ideal: 1280 },
+        height: { ideal: 720 },
+        facingMode: { ideal: facing }
+      },
+      audio: false
+    }).then(function (stream) {
+      camStream = stream;
+      camFacing = facing;
+      els.camVideo.srcObject = stream;
+      if (showOnSuccess) { els.cameraModal.hidden = false; }
+      setCamZoom(1);
+      var p = els.camVideo.play();
+      if (p && p.catch) { p.catch(function () { /* startet beim ersten Klick */ }); }
+      camSwitching = false;
+    }).catch(function () {
+      camSwitching = false;
+      if (facing !== 'user') {
+        camFacing = 'user';
+        showToast('Rückkamera nicht verfügbar – zurück zur Frontkamera. 🤳');
+        startCamera('user', showOnSuccess);
+      } else if (showOnSuccess) {
+        showToast('Kein Kamerazugriff. Bitte erlauben! 🙏');
+      }
+    });
+  }
+
+  function openCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showToast('Dein Browser unterstützt die Kamera leider nicht. 🙈');
+      return;
+    }
+    startCamera(camFacing, true);
+  }
+
+  function switchCamera() {
+    if (camSwitching) { return; }
+    startCamera(camFacing === 'user' ? 'environment' : 'user', !els.cameraModal.hidden);
+  }
+
+  function setCamZoom(z) {
+    camZoom = Math.min(3, Math.max(1, z));
+    els.camZoom.value = String(Math.round(camZoom * 100));
+    els.camZoomVal.textContent = Math.round(camZoom * 100) + ' %';
+    var mirror = camFacing === 'user' ? 'scaleX(-1) ' : '';
+    els.camVideo.style.transformOrigin = 'center';
+    els.camVideo.style.transform = mirror + 'scale(' + camZoom + ')';
+  }
+
+  function closeCamera() {
+    stopCamTracks();
     els.cameraModal.hidden = true;
   }
 
@@ -274,14 +323,22 @@
       showToast('Die Kamera ist noch nicht bereit – gib ihr einen Moment. 📷');
       return;
     }
-    var scale = Math.min(1, 1280 / v.videoWidth);
+    var vw = v.videoWidth;
+    var vh = v.videoHeight;
+    var sw = vw / camZoom;
+    var sh = vh / camZoom;
+    var sx = (vw - sw) / 2;
+    var sy = (vh - sh) / 2;
+    var scale = Math.min(1, 1280 / sw);
     var c = document.createElement('canvas');
-    c.width = Math.round(v.videoWidth * scale);
-    c.height = Math.round(v.videoHeight * scale);
+    c.width = Math.round(sw * scale);
+    c.height = Math.round(sh * scale);
     var ctx = c.getContext('2d');
-    ctx.translate(c.width, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(v, 0, 0, c.width, c.height);
+    if (camFacing === 'user') {
+      ctx.translate(c.width, 0);
+      ctx.scale(-1, 1);
+    }
+    ctx.drawImage(v, sx, sy, sw, sh, 0, 0, c.width, c.height);
     addPhoto(c.toDataURL('image/jpeg', 0.85));
     els.snapFlash.classList.remove('flash');
     void els.snapFlash.offsetWidth;
