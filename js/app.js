@@ -2,6 +2,8 @@
 (function () {
   'use strict';
 
+  var APP_VERSION = '1.0.0';
+
   var FRAME_W = 960;
   var FRAME_H = 540;
   var TITLE_MS = 2200;
@@ -45,7 +47,8 @@
     'gallery', 'emptyHint', 'inputTitle', 'selectMusic', 'rangeVolume', 'sfxTest',
     'btnCamera', 'fileUpload', 'btnSave', 'fileLoad', 'cameraModal', 'camVideo',
     'btnSnap', 'btnCamClose', 'sceneCount', 'toast', 'snapFlash', 'selectTransition',
-    'btnCamSwitch', 'camZoom', 'btnZoomIn', 'btnZoomOut', 'camZoomVal', 'camName'];
+    'btnCamSwitch', 'camZoom', 'btnZoomIn', 'btnZoomOut', 'camZoomVal', 'camName',
+    'appVersion'];
 
   function init() {
     ID_LIST.forEach(function (id) { els[id] = document.getElementById(id); });
@@ -90,6 +93,9 @@
     window.addEventListener('beforeunload', function (e) {
       if (state.scenes.length) { e.preventDefault(); e.returnValue = ''; }
     });
+
+    els.appVersion.textContent = 'Kinderfilm v' + APP_VERSION;
+    console.log('[Kinderfilm] Version ' + APP_VERSION);
 
     renderAll();
   }
@@ -439,6 +445,7 @@
     if (!state.scenes.length) { showToast('Erst ein Foto aufnehmen! 📸'); return; }
     var data = {
       app: 'kinderfilm',
+      appVersion: APP_VERSION,
       version: 1,
       title: state.title,
       music: state.music,
