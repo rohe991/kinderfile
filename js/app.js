@@ -264,17 +264,12 @@
   function startCamera(facing, showOnSuccess) {
     if (camSwitching) { return; }
     camSwitching = true;
-    /* Wichtig: alte Kamera erst NACH erfolgreichem Start stoppen,
-       damit ein fehlgeschlagener Wechsel das Livebild nicht zerstört. */
-    var constraints = {
-      video: {
-        width: { ideal: 1280 },
-        height: { ideal: 720 },
-        facingMode: facing === 'environment' ? { exact: 'environment' } : { ideal: 'user' }
-      },
-      audio: false
-    };
-    navigator.mediaDevices.getUserMedia(constraints).then(function (stream) {
+    var idx = 0;
+    var releasedForRetry = false;
+    var lastErr = null;
+    var hadStream = !!camStream;
+
+    var finish = function (stream) {
       stopCamTracks();
       camStream = stream;
       camTrack = stream.getVideoTracks()[0] || null;
@@ -287,20 +282,82 @@
       var p = els.camVideo.play();
       if (p && p.catch) { p.catch(function () { /* startet beim ersten Klick */ }); }
       camSwitching = false;
-    }).catch(function (err) {
+    };
+
+    var fail = function () {
       camSwitching = false;
       if (facing === 'environment') {
-        showToast('🤷 Nur eine Kamera gefunden – Wechsel nicht möglich.');
+        showToast('🤷 Keine zweite (Rück-)Kamera gefunden.');
       } else if (showOnSuccess) {
-        if (err && err.name === 'NotAllowedError') {
+        if (lastErr && lastErr.name === 'NotAllowedError') {
           showToast('Kamera wurde blockiert – bitte in den Browser-Einstellungen erlauben. 🙏');
-        } else if (err && err.name === 'NotFoundError') {
+        } else if (lastErr && lastErr.name === 'NotFoundError') {
           showToast('Keine Kamera gefunden. 📷');
         } else {
           showToast('Kein Kamerazugriff. Bitte erlauben! 🙏');
         }
       }
-    });
+      /* Nach missglücktem Wechsel das Livebild wiederherstellen */
+      if (hadStream && !camStream && !els.camVideo.srcObject) {
+        startCamera('user', showOnSuccess);
+      }
+    };
+
+    /* Letzter Versuch: Kamera aus der Geräteliste wählen (Labels wie
+       „back/rear/hinten“ – so finden auch Geräte ohne facingMode die Rückkamera) */
+    var byDevice = function () {
+      navigator.mediaDevices.enumerateDevices().then(function (devices) {
+        var cams = devices.filter(function (d) { return d.kind === 'videoinput'; });
+        var pick = null;
+        var i;
+        if (cams.length > 1) {
+          if (facing === 'environment') {
+            for (i = cams.length - 1; i >= 0; i--) {
+              if (/back|rear|rück|rueck|environment|world/i.test(cams[i].label)) { pick = cams[i]; break; }
+            }
+            if (!pick) { pick = cams[cams.length - 1]; }
+          } else {
+            pick = cams[0];
+          }
+        }
+        if (!pick) { fail(); return; }
+        navigator.mediaDevices.getUserMedia({
+          video: { deviceId: { exact: pick.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        }).then(finish).catch(handleError);
+      }).catch(function () { fail(); });
+    };
+
+    var handleError = function (err) {
+      lastErr = err || lastErr;
+      var busy = err && (err.name === 'NotReadableError' || err.name === 'TrackStartError');
+      if (busy && !releasedForRetry) {
+        /* Android: Kamera war noch belegt – freigeben und gleichen Versuch wiederholen */
+        releasedForRetry = true;
+        stopCamTracks();
+        attempt();
+        return;
+      }
+      idx++;
+      attempt();
+    };
+
+    var attempt = function () {
+      var base = { width: { ideal: 1280 }, height: { ideal: 720 } };
+      var cons;
+      if (idx === 0) {
+        cons = { video: Object.assign(base,
+          { facingMode: facing === 'environment' ? { exact: 'environment' } : { ideal: 'user' } }), audio: false };
+      } else if (idx === 1) {
+        cons = { video: Object.assign(base, { facingMode: facing }), audio: false };
+      } else {
+        byDevice();
+        return;
+      }
+      navigator.mediaDevices.getUserMedia(cons).then(finish).catch(handleError);
+    };
+
+    attempt();
   }
 
   function detectNativeZoom() {
